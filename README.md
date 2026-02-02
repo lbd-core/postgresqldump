@@ -28,19 +28,20 @@ Backup behavior is **fully configurable via environment variables**, making it i
 
 ### 🔴 Required
 
-| Variable                | Description                          |
-| ----------------------- | ------------------------------------ |
-| `PGHOST`                | PostgreSQL host                      |
-| `PGPORT`                | PostgreSQL port                      |
-| `PGUSER`                | PostgreSQL user                      |
-| `PGPASSWORD`            | PostgreSQL password                  |
-| `PGDATABASE`            | PostgreSQL database name              |
-| `S3_BUCKET`             | S3 bucket name                       |
-| `S3_PREFIX`             | Path prefix in the bucket             |
-| `AWS_ACCESS_KEY_ID`     | AWS Access Key                       |
-| `AWS_SECRET_ACCESS_KEY` | AWS Secret Key                       |
-| `AWS_DEFAULT_REGION`    | AWS region (e.g. `eu-north-1`)       |
-| `INTERVAL`              | Local retention (days)                |
+| Variable                | Description                    |
+| ----------------------- | ------------------------------ |
+| `PGHOST`                | PostgreSQL host                |
+| `PGPORT`                | PostgreSQL port                |
+| `PGUSER`                | PostgreSQL user                |
+| `PGPASSWORD`            | PostgreSQL password            |
+| `PGDATABASE`            | PostgreSQL database name       |
+| `S3_BUCKET`             | S3 bucket name                 |
+| `S3_PREFIX`             | Path prefix in the bucket      |
+| `AWS_ACCESS_KEY_ID`     | AWS Access Key                 |
+| `AWS_SECRET_ACCESS_KEY` | AWS Secret Key                 |
+| `AWS_DEFAULT_REGION`    | AWS region (e.g. `eu-north-1`) |
+| `INTERVAL`              | Local retention (days)         |
+| `CRON_SCHEDULE`         | Cron string to schedule backup |
 
 ---
 
@@ -73,6 +74,7 @@ docker run --rm \
   -e AWS_SECRET_ACCESS_KEY="SECRET..." \
   -e AWS_DEFAULT_REGION="eu-north-1" \
   -e INTERVAL=7 \
+  -e CRON_SCHEDULE="0 0 * * *"
   -v $(pwd)/backups:/postgredb \
   ghcr.io/lbd-core/postgresqldump:latest
 ```
@@ -104,6 +106,7 @@ services:
       AWS_SECRET_ACCESS_KEY: "SECRET..."
       AWS_DEFAULT_REGION: "eu-north-1"
       INTERVAL: 7
+      CRON_SCHEDULE: "0 0 * * *"
     volumes:
       - ./backups:/postgredb
 ```
