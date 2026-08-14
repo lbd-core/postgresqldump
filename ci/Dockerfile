@@ -16,8 +16,8 @@ RUN apk add --no-cache \
 WORKDIR /app
 VOLUME /postgredb
 
-COPY backup.sh schedule.sh /app/
-RUN chmod +x /app/backup.sh /app/schedule.sh
+COPY backup.sh schedule.sh entrypoint.sh /app/
+RUN chmod +x /app/backup.sh /app/schedule.sh /app/entrypoint.sh
 
 # cron detaches the job from any terminal, so its output must be redirected.
 # CRON_LOG points at PID 1's stdout (crond): each backup's output therefore ends
@@ -26,12 +26,7 @@ ENV CRON_LOG=/proc/1/fd/1 \
     LOG_COLOR=always \
     RUN_ON_START=false
 
-# schedule.sh installs the cron job and fails loudly if it cannot; crond then
-# runs in the foreground, so the container dies if the daemon does.
-#
-# Deliberately NOT `exec crond`: crond calls setpgid(0,0) at startup, which
-# fails with EPERM for PID 1 (already a session leader) and kills the container
-# with "setpgid: Operation not permitted". Keeping bash as PID 1 makes crond a
-# child process, for which setpgid succeeds. /proc/1/fd/1 then refers to bash's
-# stdout, which is still the container console.
-ENTRYPOINT ["/bin/bash", "-c", "/app/schedule.sh && crond -f -L /dev/stdout"]
+# entrypoint.sh installs the cron job and supervises crond as a child process,
+# so that crond never becomes PID 1 (see the comments in that script).
+# PID 1 stays the entrypoint shell, hence /proc/1/fd/1 is still the console.
+ENTRYPOINT ["/app/entrypoint.sh"]
