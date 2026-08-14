@@ -1,0 +1,7 @@
+# Scripts executed inside the container must keep LF line endings even when the
+# repository is cloned on Windows with core.autocrlf=true: with CRLF the Linux
+# kernel fails to interpret the shebang ("/bin/bash^M: bad interpreter").
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf

@@ -11,49 +11,75 @@ jobs:
     container:
       image: mcr.microsoft.com/dotnet/sdk:8.0
     outputs:
-      GitVersion_SemVer: ${{ env.GitVersion_SemVer }}
+      GitVersion_SemVer: ${{ steps.gitversion.outputs.semver }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.1.1
         with:
-          fetch-depth: 0 # 0 indica di ottenere tutta la cronologia
+          fetch-depth: 0 # full history, required by GitVersion
+
       - name: Install GitVersion.Tool
+        run: dotnet tool install --global GitVersion.Tool --version 5.12.0
+
+      # /showvariable prints the value on stdout, so the SemVer travels as a step
+      # output instead of through GITHUB_ENV. The empty-value check prevents
+      # tagging and publishing images with a blank version.
+      - name: Calculate version
         id: gitversion
         run: |
-          dotnet tool install --global GitVersion.Tool --version 5.12.0
           export PATH="$PATH:/github/home/.dotnet/tools"
-          dotnet-gitversion /config ./GitVersion.yml /nocache /verbosity Diagnostic /output buildserver
-        env:
-          GIT_DEPTH: 10000
-      - name: Display Version
-        run: echo "Version> ${{ env.GitVersion_SemVer }}"
+          SEMVER="$(dotnet-gitversion /nocache /showvariable SemVer | tail -n 1 | tr -d '[:space:]')"
+          if [ -z "$SEMVER" ]; then
+            echo "::error::GitVersion produced no SemVer"
+            exit 1
+          fi
+          echo "Version> $SEMVER"
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
 
   docker:
-    permissions: write-all
+    permissions:
+      contents: write # required to create and push the tag
+      packages: write # required to publish to ghcr.io
     needs:
       - versioning
     runs-on: ubuntu-latest
-    services:
-      docker:
-        image: docker:20.10.16-dind
-        options: --privileged
+    env:
+      IMAGE: ghcr.io/lbd-core/${{ vars.REPO_NAME || github.event.repository.name }}
+      VERSION: ${{ needs.versioning.outputs.GitVersion_SemVer }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed to tell whether the tag already exists
+
       - name: Login to Docker Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build Docker image
-        run: docker build -t ghcr.io/lbd-core/${{vars.REPO_NAME}}:latest -t ghcr.io/lbd-core/${{vars.REPO_NAME}}:${{ needs.versioning.outputs.GitVersion_SemVer }} -f ./ci/Dockerfile .
+        run: |
+          docker build \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:$VERSION" \
+            -f ./ci/Dockerfile .
+
       - name: Push Docker image
         run: |
-          docker push ghcr.io/lbd-core/${{vars.REPO_NAME}}:latest
-          docker push ghcr.io/lbd-core/${{vars.REPO_NAME}}:${{ needs.versioning.outputs.GitVersion_SemVer }}
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$VERSION"
+
+      # Tag created with plain git: avoids depending on a third-party action
+      # pinned to a moving ref (@master). Lightweight tag, as before.
       - name: Tag repo with new version
-        uses: cardinalby/git-tag-action@master
-        env:
-          TAG: ${{ needs.versioning.outputs.GitVersion_SemVer }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "Tag $VERSION already exists, nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$VERSION"
+          git push origin "refs/tags/$VERSION"
