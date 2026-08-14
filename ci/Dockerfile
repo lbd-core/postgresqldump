@@ -27,6 +27,11 @@ ENV CRON_LOG=/proc/1/fd/1 \
     RUN_ON_START=false
 
 # schedule.sh installs the cron job and fails loudly if it cannot; crond then
-# stays in the foreground as PID 1, so Docker receives signals and the container
-# dies if the daemon does.
-ENTRYPOINT ["/bin/bash", "-c", "/app/schedule.sh && exec crond -f -L /dev/stdout"]
+# runs in the foreground, so the container dies if the daemon does.
+#
+# Deliberately NOT `exec crond`: crond calls setpgid(0,0) at startup, which
+# fails with EPERM for PID 1 (already a session leader) and kills the container
+# with "setpgid: Operation not permitted". Keeping bash as PID 1 makes crond a
+# child process, for which setpgid succeeds. /proc/1/fd/1 then refers to bash's
+# stdout, which is still the container console.
+ENTRYPOINT ["/bin/bash", "-c", "/app/schedule.sh && crond -f -L /dev/stdout"]
