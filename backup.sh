@@ -2,9 +2,9 @@
 #
 # PostgreSQL backup -> tar.gz -> S3.
 #
-# Every stage is logged twice:
-#   - to stdout    (visible with `docker logs`)
-#   - to $LOG_FILE (persisted on the volume, without colour codes)
+# Every stage is logged to the console only: stdout for progress, stderr for
+# errors. Inside the container the output is collected by `docker logs`.
+# Nothing is written to the filesystem.
 #
 set -euo pipefail
 
@@ -27,8 +27,6 @@ set -euo pipefail
 # OPTIONAL ENV VARS
 # =========================
 BACKUP_ROOT="${BACKUP_ROOT:-/postgredb/backup}"
-LOG_FILE="${LOG_FILE:-/postgredb/backup.log}"
-LOG_MAX_BYTES="${LOG_MAX_BYTES:-5242880}"   # 5 MiB, then rotated to .1
 LOG_COLOR="${LOG_COLOR:-auto}"              # auto | always | never
 S3_ENDPOINT_URL="${S3_ENDPOINT_URL:-}"      # for S3-compatible storage (MinIO, R2, ...)
 export PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-10}"
@@ -38,13 +36,7 @@ readonly TOTAL_STAGES=6
 # =========================
 # LOGGING
 # =========================
-mkdir -p "$BACKUP_ROOT" "$(dirname "$LOG_FILE")"
-
-# Basic rotation: keeps backup.log from growing without bound.
-if [ -f "$LOG_FILE" ] && [ "$(wc -c < "$LOG_FILE")" -gt "$LOG_MAX_BYTES" ]; then
-  mv -f "$LOG_FILE" "$LOG_FILE.1"
-fi
-: >> "$LOG_FILE"
+mkdir -p "$BACKUP_ROOT"
 
 case "$LOG_COLOR" in
   always) USE_COLOR=1 ;;
@@ -62,10 +54,8 @@ fi
 _ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
 _log() {
-  local color="$1" level="$2" msg="$3" ts
-  ts="$(_ts)"
-  printf '%s%s [%-5s] %s%s\n' "$color" "$ts" "$level" "$msg" "$C_OFF"
-  printf '%s [%-5s] %s\n' "$ts" "$level" "$msg" >> "$LOG_FILE"
+  local color="$1" level="$2" msg="$3"
+  printf '%s%s [%-5s] %s%s\n' "$color" "$(_ts)" "$level" "$msg" "$C_OFF"
 }
 
 log_info()  { _log "$C_INFO" "INFO"  "$1"; }

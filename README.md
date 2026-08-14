@@ -19,7 +19,7 @@ Backup behavior is **fully configurable via environment variables**, making it i
 * ✅ `tar.gz` compression
 * ✅ Upload to S3 with `aws-cli` (custom endpoint supported)
 * ✅ Built-in cron scheduler
-* ✅ Staged logging, on stdout and on a persistent log file
+* ✅ Staged logging to the container console
 * ✅ Configuration **only via ENV**
 * ✅ Alpine Linux (lightweight image)
 * ✅ Configurable local retention
@@ -53,10 +53,8 @@ Backup behavior is **fully configurable via environment variables**, making it i
 | `S3_ENDPOINT_URL`   | _(empty)_              | Endpoint for S3-compatible storage (MinIO, Cloudflare R2, …)                 |
 | `PGCONNECT_TIMEOUT` | `10`                   | Connection timeout in seconds                                                |
 | `BACKUP_ROOT`       | `/postgredb/backup`    | Local directory holding the archives                                         |
-| `LOG_FILE`          | `/postgredb/backup.log` | Persistent log file (rotated to `.1`)                                       |
-| `LOG_MAX_BYTES`     | `5242880`              | Size at which `LOG_FILE` is rotated                                          |
 | `LOG_COLOR`         | `always` (in image)    | `auto` \| `always` \| `never`                                                |
-| `CRON_LOG`          | `/proc/1/fd/1` (in image) | Where the cron job writes its output (PID 1 stdout → `docker logs`)       |
+| `CRON_LOG`          | `/proc/1/fd/1`         | Where the cron job sends its output (PID 1 stdout → `docker logs`)           |
 
 ---
 
@@ -95,7 +93,7 @@ docker run -d --name postgres-backup \
   ghcr.io/lbd-core/postgresqldump:latest
 ```
 
-Archives are stored locally under `./backups/backup/` and uploaded to S3. The log is kept at `./backups/backup.log`.
+Archives are stored locally under `./backups/backup/` and uploaded to S3. Logs go to the container console only — follow them with `docker logs -f postgres-backup`.
 
 > With `RUN_ON_START=true` the first backup runs immediately, so a misconfiguration surfaces at startup instead of silently at 02:00. Keep it enabled for the first run, then disable it.
 
@@ -144,7 +142,11 @@ docker compose exec postgres-backup /app/backup.sh
 
 ## 📋 Logs
 
-Every run is logged stage by stage, both on stdout (`docker logs -f postgres-backup`) and in `LOG_FILE`:
+Every run is logged stage by stage **to the console only** — progress on stdout, errors on stderr. Nothing is written to the filesystem, so the log is collected by Docker like any other container output:
+
+```bash
+docker logs -f postgres-backup
+```
 
 ```text
 2026-01-15T02:00:01Z [INFO ] [1/6] Checking PostgreSQL connectivity ...
@@ -169,7 +171,13 @@ On failure the exact stage is reported and the script exits non-zero:
 2026-01-15T02:00:12Z [ERROR] No backup was uploaded to S3 for this run.
 ```
 
-Grep for `[ERROR]` in `backup.log` to build an alert.
+Grep the container output for `[ERROR]` to build an alert:
+
+```bash
+docker logs postgres-backup 2>&1 | grep '\[ERROR\]'
+```
+
+Since cron detaches the job from any terminal, `schedule.sh` redirects its output to `CRON_LOG`, which defaults to `/proc/1/fd/1` — PID 1's stdout, i.e. the container console. Point `CRON_LOG` at a file if you do want the output persisted.
 
 ---
 

@@ -19,8 +19,9 @@ VOLUME /postgredb
 COPY backup.sh schedule.sh /app/
 RUN chmod +x /app/backup.sh /app/schedule.sh
 
-# CRON_LOG points at PID 1's stdout (crond), so each backup's output shows up in
-# `docker logs` as well as in /postgredb/backup.log.
+# cron detaches the job from any terminal, so its output must be redirected.
+# CRON_LOG points at PID 1's stdout (crond): each backup's output therefore ends
+# up in `docker logs`, and nothing is written to the filesystem.
 ENV CRON_LOG=/proc/1/fd/1 \
     LOG_COLOR=always \
     RUN_ON_START=false
